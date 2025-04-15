@@ -1,0 +1,5 @@
+Prompt 1: "Give completely frontend code with beautiful and modern styling"
+Prompt 2: "Give README file for my ClickHouse ingestion tool"
+Prompt 3: "How to preview 100 rows of a ClickHouse table using Python?"
+Prompt 4: "Implement file upload feature in Flask and parse CSV"
+Prompt 5: "Create a responsive UI with source-target selection and progress bar"
