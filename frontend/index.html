@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ClickHouse Ingestion Tool</title>
+  <style>
+    :root {
+      --primary-color: #4f46e5;
+      --secondary-color: #6366f1;
+      --bg-color: #f9fafb;
+      --card-color: #ffffff;
+      --text-color: #1f2937;
+      --border-radius: 12px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background-color: var(--bg-color);
+      margin: 0;
+      padding: 30px;
+      color: var(--text-color);
+    }
+
+    h1 {
+      text-align: center;
+      color: var(--primary-color);
+      margin-bottom: 40px;
+    }
+
+    .section {
+      background-color: var(--card-color);
+      padding: 25px;
+      margin-bottom: 30px;
+      border-radius: var(--border-radius);
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+    }
+
+    .section h2 {
+      color: var(--secondary-color);
+      margin-top: 0;
+    }
+
+    label {
+      display: block;
+      margin-top: 15px;
+      font-weight: 500;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    input[type="password"],
+    input[type="file"],
+    select {
+      width: 100%;
+      max-width: 400px;
+      padding: 10px;
+      margin-top: 5px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 1rem;
+    }
+
+    button {
+      margin-top: 20px;
+      padding: 10px 20px;
+      background-color: var(--primary-color);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: background-color 0.3s ease;
+    }
+
+    button:hover {
+      background-color: var(--secondary-color);
+    }
+
+    .status {
+      margin-top: 15px;
+      color: green;
+      font-weight: 500;
+    }
+
+    .error {
+      color: red;
+    }
+
+    table {
+      margin-top: 15px;
+      border-collapse: collapse;
+      width: 100%;
+      background-color: #f3f4f6;
+      border-radius: var(--border-radius);
+      overflow: hidden;
+    }
+
+    th, td {
+      border: 1px solid #e5e7eb;
+      padding: 10px;
+      text-align: left;
+    }
+
+    th {
+      background-color: #e0e7ff;
+    }
+
+    .checkbox-group label {
+      margin-right: 10px;
+    }
+
+    @media (max-width: 768px) {
+      input, select {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>ClickHouse ↔ Flat File Ingestion Tool</h1>
+
+  <div class="section">
+    <h2>1. ClickHouse Connection</h2>
+    <form id="clickhouseForm">
+      <label>Host <input type="text" name="host" value="localhost" required></label>
+      <label>Port <input type="number" name="port" value="9000" required></label>
+      <label>Database <input type="text" name="database" value="default" required></label>
+      <label>User <input type="text" name="user" value="default" required></label>
+      <label>JWT Token <input type="password" name="jwt_token" required></label>
+      <label>Secure (true/false) <input type="text" name="secure" value="false" required></label>
+      <button type="button" onclick="getTables()">🔄 Load Tables</button>
+    </form>
+    <div id="tablesDiv" class="status"></div>
+  </div>
+
+  <div class="section">
+    <h2>2. Select Table & Columns</h2>
+    <label>Table
+      <select id="tableSelect"></select>
+    </label>
+    <button type="button" onclick="loadColumns()">🔍 Load Columns</button>
+    <div id="columnsDiv" class="checkbox-group"></div>
+    <button type="button" onclick="previewData()">👁️ Preview (100 rows)</button>
+    <div id="previewDiv"></div>
+  </div>
+
+  <div class="section">
+    <h2>3. Export ClickHouse → CSV</h2>
+    <label>Output File Name <input type="text" id="outputFile" value="output.csv"></label>
+    <label>Delimiter <input type="text" id="delimiter" value=","></label>
+    <button type="button" onclick="ingestToFlatFile()">⬇️ Export to File</button>
+    <div id="ingestStatus" class="status"></div>
+  </div>
+
+  <div class="section">
+    <h2>4. Import CSV → ClickHouse</h2>
+    <form id="uploadForm" enctype="multipart/form-data">
+      <label>Target Table <input type="text" name="table" required></label>
+      <label>Columns (comma separated) <input type="text" name="columns" required></label>
+      <label>Column Types (comma separated) <input type="text" name="column_types" required></label>
+      <label>Delimiter <input type="text" name="delimiter" value=","></label>
+      <label>Select CSV File <input type="file" name="file" required></label>
+
+      <input type="hidden" name="host">
+      <input type="hidden" name="port">
+      <input type="hidden" name="database">
+      <input type="hidden" name="user">
+      <input type="hidden" name="jwt_token">
+      <input type="hidden" name="secure">
+
+      <button type="button" onclick="uploadCSV()">⬆️ Upload & Import</button>
+    </form>
+    <div id="uploadStatus" class="status"></div>
+  </div>
+
+  <script>
+    let clickhouseConfig = {};
+
+    function getTables() {
+      const form = document.getElementById('clickhouseForm');
+      const formData = new FormData(form);
+      clickhouseConfig = Object.fromEntries(formData.entries());
+
+      fetch('/api/get_tables', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(clickhouseConfig)
+      })
+      .then(res => res.json())
+      .then(data => {
+        const tableSelect = document.getElementById('tableSelect');
+        const tablesDiv = document.getElementById('tablesDiv');
+        if (data.status === "success") {
+          tablesDiv.innerHTML = `✅ Tables Loaded: ${data.tables.join(', ')}`;
+          tableSelect.innerHTML = '';
+          data.tables.forEach(table => {
+            const opt = document.createElement("option");
+            opt.value = table;
+            opt.text = table;
+            tableSelect.add(opt);
+          });
+        } else {
+          tablesDiv.innerHTML = `❌ Error: ${data.message}`;
+        }
+      });
+    }
+
+    function loadColumns() {
+      const table = document.getElementById('tableSelect').value;
+      const payload = { ...clickhouseConfig, table };
+      fetch('/api/get_columns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+      .then(res => res.json())
+      .then(data => {
+        const columnsDiv = document.getElementById('columnsDiv');
+        if (data.status === "success") {
+          columnsDiv.innerHTML = data.columns.map(col =>
+            `<label><input type="checkbox" name="column" value="${col.name}"> ${col.name} (${col.type})</label>`
+          ).join('');
+        } else {
+          columnsDiv.innerHTML = `❌ Error: ${data.message}`;
+        }
+      });
+    }
+
+    function previewData() {
+      const table = document.getElementById('tableSelect').value;
+      const selectedColumns = [...document.querySelectorAll('input[name="column"]:checked')].map(cb => cb.value);
+      if (selectedColumns.length === 0) return alert("Select at least one column!");
+
+      const payload = { ...clickhouseConfig, table, columns: selectedColumns };
+      fetch('/api/preview_data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+      .then(res => res.json())
+      .then(data => {
+        const previewDiv = document.getElementById('previewDiv');
+        if (data.status === "success") {
+          const rows = data.preview;
+          if (rows.length === 0) return previewDiv.innerHTML = "No data available.";
+          let html = "<table><thead><tr>";
+          html += Object.keys(rows[0]).map(k => `<th>${k}</th>`).join('');
+          html += "</tr></thead><tbody>";
+          html += rows.map(row => `<tr>${Object.values(row).map(v => `<td>${v}</td>`).join('')}</tr>`).join('');
+          html += "</tbody></table>";
+          previewDiv.innerHTML = html;
+        } else {
+          previewDiv.innerHTML = `❌ Error: ${data.message}`;
+        }
+      });
+    }
+
+    function ingestToFlatFile() {
+      const table = document.getElementById('tableSelect').value;
+      const selectedColumns = [...document.querySelectorAll('input[name="column"]:checked')].map(cb => cb.value);
+      if (selectedColumns.length === 0) return alert("Select at least one column!");
+
+      const output_file = document.getElementById('outputFile').value;
+      const delimiter = document.getElementById('delimiter').value;
+      const payload = { ...clickhouseConfig, table, columns: selectedColumns, output_file, delimiter };
+
+      fetch('/api/ingest_clickhouse_to_flatfile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+      .then(res => res.json())
+      .then(data => {
+        const status = document.getElementById('ingestStatus');
+        if (data.status === "success") {
+          status.innerHTML = `✅ Exported ${data.record_count} records to ${data.output_file}`;
+        } else {
+          status.innerHTML = `❌ Error: ${data.message}`;
+        }
+      });
+    }
+
+    function uploadCSV() {
+      const form = document.getElementById('uploadForm');
+      // Fill hidden fields from config
+      ["host", "port", "database", "user", "jwt_token", "secure"].forEach(k => {
+        form.elements[k].value = clickhouseConfig[k] || '';
+      });
+
+      const formData = new FormData(form);
+      fetch('/api/ingest_flatfile_to_clickhouse', {
+        method: 'POST',
+        body: formData
+      })
+      .then(res => res.json())
+      .then(data => {
+        const status = document.getElementById('uploadStatus');
+        if (data.status === "success") {
+          status.innerHTML = `✅ Successfully uploaded and ingested ${data.record_count} records`;
+        } else {
+          status.innerHTML = `❌ Error: ${data.message}`;
+        }
+      });
+    }
+  </script>
+</body>
+</html>

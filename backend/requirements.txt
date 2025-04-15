@@ -1,0 +1,4 @@
+Flask==2.2.3
+flask-cors==3.0.10
+clickhouse-driver==0.2.9
+Werkzeug==2.2.3
