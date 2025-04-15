@@ -20,25 +20,18 @@
 `## 📂 Project Structure`
 
 clickhouse-flatfile-ingestion/
-
 ├── backend/
-
-  	 ├── app.py   
-
-├── requirements.txt
-
- └── uploaded\_files/            \# For temp CSV uploads
-
+│   ├── app.py                  # Flask backend logic
+│   ├── requirements.txt        # Python dependencies
+│
 ├── frontend/
-
-│   └── index.html
-
-├── output\_files/                 \# For exported CSVs
-
-├── prompts.txt                   \# List of AI prompts you used
-
+│   └── index.html              # Main UI
+│
+├── uploaded_files/             # Temporarily stores uploaded CSVs
+├── output_files/               # Stores exported CSVs from ClickHouse
+├── prompts.txt                 # AI prompts used for development
 ├── README.md
-
+    
 `---`
 
 `## ⚙️ Setup Instructions`
